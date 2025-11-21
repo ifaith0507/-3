@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课堂点名积分系统</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3b82f6',
+            secondary: '#8b5cf6',
+            success: '#10b981',
+            danger: '#ef4444',
+            warning: '#f59e0b',
+          },
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto { content-visibility: auto; }
+      .text-shadow { text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+  <!-- 顶部导航 -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="container mx-auto px-4 py-4">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center">
+          <i class="fa fa-graduation-cap text-2xl text-primary mr-2"></i>
+          <h1 class="text-xl font-bold text-gray-800">课堂点名积分系统</h1>
+        </div>
+        <div class="hidden md:flex items-center space-x-6">
+          <button id="nav-home" class="nav-btn text-primary font-medium">首页</button>
+          <button id="nav-students" class="nav-btn text-gray-600 font-medium">学生管理</button>
+          <button id="nav-statistics" class="nav-btn text-gray-600 font-medium">积分统计</button>
+          <button id="nav-settings" class="nav-btn text-gray-600 font-medium">设置</button>
+        </div>
+        <button id="mobile-menu-btn" class="md:hidden text-gray-600">
+          <i class="fa fa-bars text-xl"></i>
+        </button>
+      </div>
+      <!-- 移动端菜单 -->
+      <div id="mobile-menu" class="md:hidden hidden bg-white border-t border-gray-200 animate-fade-in">
+        <div class="px-4 py-2 flex flex-col space-y-2">
+          <button id="mobile-nav-home" class="mobile-nav-btn py-2 text-primary font-medium text-left">首页</button>
+          <button id="mobile-nav-students" class="mobile-nav-btn py-2 text-gray-600 font-medium text-left">学生管理</button>
+          <button id="mobile-nav-statistics" class="mobile-nav-btn py-2 text-gray-600 font-medium text-left">积分统计</button>
+          <button id="mobile-nav-settings" class="mobile-nav-btn py-2 text-gray-600 font-medium text-left">设置</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="flex-grow container mx-auto px-4 py-6">
+    <!-- 首页/点名页 -->
+    <section id="home-section" class="section active">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-1 order-2 lg:order-1">
+          <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">点名控制</h2>
+            <div class="mb-6">
+              <label class="block text-gray-700 font-medium mb-2">点名模式</label>
+              <div class="flex space-x-4">
+                <label class="inline-flex items-center">
+                  <input type="radio" name="call-mode" value="random" class="call-mode-radio form-radio h-5 w-5 text-primary" checked>
+                  <span class="ml-2 text-gray-700">随机点名</span>
+                </label>
+                <label class="inline-flex items-center">
+                  <input type="radio" name="call-mode" value="sequence" class="call-mode-radio form-radio h-5 w-5 text-primary">
+                  <span class="ml-2 text-gray-700">顺序点名</span>
+                </label>
+              </div>
+            </div>
+            <button id="call-student-btn" class="w-full bg-gradient-to-r from-primary to-blue-600 text-white py-3 px-6 rounded-lg font-bold text-lg hover:opacity-90 transition-opacity">
+              <i class="fa fa-random mr-2"></i> 开始点名
+            </button>
+          </div>
+
+          <!-- 最近点名记录 -->
+          <div class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">最近点名记录</h2>
+            <div id="recent-calls" class="space-y-3 max-h-64 overflow-y-auto scrollbar-hide">
+              <div class="text-gray-500 text-center py-4">暂无点名记录</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 点名结果展示区 -->
+        <div class="lg:col-span-2 order-1 lg:order-2">
+          <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div id="call-result-container" class="flex flex-col items-center justify-center min-h-[300px] md:min-h-[400px]">
+              <!-- 未点名状态 -->
+              <div id="not-called-state" class="text-center w-full">
+                <div class="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center mb-6 mx-auto">
+                  <i class="fa fa-hand-pointer-o text-6xl text-primary"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-700 mb-2">准备就绪</h3>
+                <p class="text-gray-500">点击开始点名按钮开始随机点名</p>
+              </div>
+
+              <!-- 点名动画状态 -->
+              <div id="calling-animation-state" class="hidden text-center w-full">
+                <div class="w-32 h-32 bg-secondary/10 rounded-full flex items-center justify-center mb-6 mx-auto animate-pulse">
+                  <i class="fa fa-refresh text-6xl text-secondary animate-spin"></i>
+                </div>
+                <h3 id="calling-name" class="text-4xl font-bold text-gray-700 mb-2">准备中...</h3>
+                <p id="calling-id" class="text-xl text-gray-500">请稍候</p>
+              </div>
+
+              <!-- 点名结果状态 -->
+              <div id="call-result-state" class="hidden text-center w-full">
+                <div class="w-32 h-32 bg-success/10 rounded-full flex items-center justify-center mb-6 mx-auto">
+                  <i class="fa fa-check text-6xl text-success"></i>
+                </div>
+                <h3 id="result-name" class="text-5xl font-bold text-gray-800 mb-2 text-shadow">--</h3>
+                <p id="result-id" class="text-2xl text-gray-600 mb-4">--</p>
+                <p id="result-major" class="text-lg text-gray-500 mb-2">--</p>
+                <p id="result-score" class="text-lg text-primary font-medium mb-6">当前积分：0.00</p>
+
+                <!-- 积分调整按钮 -->
+                <div class="flex flex-wrap justify-center gap-3 mb-6">
+                  <button class="score-btn bg-success text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="1" data-action="arrive">
+                    <i class="fa fa-check-circle mr-1"></i> 已到达 (+1)
+                  </button>
+                  <button class="score-btn bg-danger text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="-1" data-action="absent">
+                    <i class="fa fa-times-circle mr-1"></i> 未到达 (-1)
+                  </button>
+                </div>
+
+                <!-- 问题回答评分 -->
+                <div class="w-full max-w-md mx-auto">
+                  <h4 class="text-lg font-semibold text-gray-700 mb-3">问题回答评分</h4>
+                  <div class="grid grid-cols-2 gap-3">
+                    <button class="score-btn bg-primary text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="0.5" data-action="repeat-correct">
+                      <i class="fa fa-repeat mr-1"></i> 正确重复 (+0.5)
+                    </button>
+                    <button class="score-btn bg-danger text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="-1" data-action="repeat-wrong">
+                      <i class="fa fa-times mr-1"></i> 错误重复 (-1)
+                    </button>
+                    <button class="score-btn bg-primary text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="3" data-action="answer-excellent">
+                      <i class="fa fa-star mr-1"></i> 回答优秀 (+3)
+                    </button>
+                    <button class="score-btn bg-primary text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="2" data-action="answer-good">
+                      <i class="fa fa-thumbs-up mr-1"></i> 回答良好 (+2)
+                    </button>
+                    <button class="score-btn bg-warning text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="1" data-action="answer-average">
+                      <i class="fa fa-meh-o mr-1"></i> 回答一般 (+1)
+                    </button>
+                    <button class="score-btn bg-warning text-white py-3 px-6 rounded-lg hover:opacity-90 transition-opacity" data-score="0.5" data-action="answer-poor">
+                      <i class="fa fa-frown-o mr-1"></i> 回答较差 (+0.5)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 随机事件提示 -->
+          <div id="random-event-alert" class="hidden bg-gradient-to-r from-secondary to-purple-600 text-white rounded-xl shadow-lg p-6 mb-6 animate-bounce">
+            <div class="flex items-start">
+              <div class="flex-shrink-0">
+                <i class="fa fa-bolt text-2xl"></i>
+              </div>
+              <div class="ml-3">
+                <h3 id="event-title" class="text-xl font-bold">随机事件触发！</h3>
+                <p id="event-description" class="mt-1">双倍积分！本次回答获得双倍积分奖励！</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 学生管理页 -->
+    <section id="students-section" class="section hidden">
+      <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+          <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">学生管理</h2>
+          <div class="flex flex-wrap gap-3">
+            <!-- Excel导入按钮 -->
+            <div class="relative">
+              <button id="import-students-btn" class="bg-primary text-white py-2 px-4 rounded-lg hover:opacity-90 transition-opacity flex items-center">
+                <i class="fa fa-upload mr-2"></i> 导入Excel
+              </button>
+              <input type="file" id="excel-file-input" accept=".xlsx,.xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            </div>
+            <!-- Excel导出按钮 -->
+            <button id="export-students-btn" class="bg-secondary text-white py-2 px-4 rounded-lg hover:opacity-90 transition-opacity flex items-center">
+              <i class="fa fa-download mr-2"></i> 导出Excel
+            </button>
+            <!-- 添加学生按钮 -->
+            <button id="add-student-btn" class="bg-success text-white py-2 px-4 rounded-lg hover:opacity-90 transition-opacity flex items-center">
+              <i class="fa fa-plus mr-2"></i> 添加学生
+            </button>
+            <!-- 模板下载 -->
+            <a href="#" id="download-template" class="text-primary hover:underline text-sm flex items-center">
+              <i class="fa fa-file-excel-o mr-1"></i> 下载模板
+            </a>
+          </div>
+        </div>
+
+        <!-- 搜索和筛选 -->
+        <div class="flex flex-col md:flex-row gap-4 mb-6">
+          <div class="flex-grow">
+            <div class="relative">
+              <input type="text" id="student-search" placeholder="搜索学生姓名、学号或专业..." class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              <div class="absolute left-3 top-3.5 text-gray-400">
+                <i class="fa fa-search"></i>
+              </div>
+            </div>
+          </div>
+          <div class="md:w-48">
+            <select id="major-filter" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              <option value="">所有专业</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 学生列表 -->
+        <div class="overflow-x-auto scrollbar-hide">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学号</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">专业</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">当前积分</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">点名次数</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              </tr>
+            </thead>
+            <tbody id="students-list" class="bg-white divide-y divide-gray-200">
+              <!-- 学生数据将通过JS动态加载 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 积分统计页 -->
+    <section id="statistics-section" class="section hidden">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- 总体统计 -->
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-primary/5 rounded-lg p-4 text-center">
+                <p class="text-gray-500 text-sm mb-1">学生总数</p>
+                <p id="total-students" class="text-3xl font-bold text-primary">0</p>
+              </div>
+              <div class="bg-secondary/5 rounded-lg p-4 text-center">
+                <p class="text-gray-500 text-sm mb-1">点名总次数</p>
+                <p id="total-calls" class="text-3xl font-bold text-secondary">0</p>
+              </div>
+              <div class="bg-success/5 rounded-lg p-4 text-center">
+                <p class="text-gray-500 text-sm mb-1">平均积分</p>
+                <p id="avg-score" class="text-3xl font-bold text-success">0.00</p>
+              </div>
+              <div class="bg-warning/5 rounded-lg p-4 text-center">
+                <p class="text-gray-500 text-sm mb-1">专业数量</p>
+                <p id="total-majors" class="text-3xl font-bold text-warning">0</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 积分排名图表 -->
+          <div class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">积分排名前10</h2>
+            <div class="h-[300px]">
+              <canvas id="score-ranking-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- 专业分布图表 -->
+          <div class="bg-white rounded-xl shadow-lg p-6 md:col-span-2">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">专业分布</h2>
+            <div class="h-[300px]">
+              <canvas id="major-distribution-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 系统设置页 -->
+      <section id="settings-section" class="section hidden">
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h2 class="text-2xl font-bold text-gray-800 mb-6">系统设置</h2>
+          
+          <!-- 积分规则设置 -->
+          <div class="mb-8">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">积分规则设置</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">已到达</label>
+                <input type="number" id="score-arrive" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">未到达</label>
+                <input type="number" id="score-absent" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">正确重复</label>
+                <input type="number" id="score-repeat-correct" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">错误重复</label>
+                <input type="number" id="score-repeat-wrong" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">回答优秀</label>
+                <input type="number" id="score-answer-excellent" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">回答良好</label>
+                <input type="number" id="score-answer-good" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">回答一般</label>
+                <input type="number" id="score-answer-average" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">回答较差</label>
+                <input type="number" id="score-answer-poor" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+              </div>
+            </div>
+          </div>
+
+          <!-- 随机事件设置 -->
+          <div class="mb-8">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">随机事件设置</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label class="block text-gray-700 font-medium mb-2">触发概率</label>
+                <div class="flex items-center">
+                  <input type="range" id="random-event-probability" min="0" max="1" step="0.01" class="w-full">
+                  <span id="probability-value" class="ml-4 text-gray-700">0.2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 保存按钮 -->
+          <div class="text-right">
+            <button id="save-settings-btn" class="bg-primary text-white py-3 px-6 rounded-lg font-bold hover:opacity-90 transition-opacity">
+              <i class="fa fa-save mr-2"></i> 保存设置
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 添加/编辑学生模态框 -->
+    <div id="student-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md animate-fade-in">
+        <div class="flex justify-between items-center mb-4">
+          <h3 id="modal-title" class="text-xl font-bold text-gray-800">添加学生</h3>
+          <button id="close-modal-btn" class="text-gray-500 hover:text-gray-700">
+            <i class="fa fa-times text-xl"></i>
+          </button>
+        </div>
+        <form id="student-form">
+          <input type="hidden" id="student-id">
+          <div class="mb-4">
+            <label for="student-id-input" class="block text-gray-700 font-medium mb-2">学号</label>
+            <input type="text" id="student-id-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入学号" required>
+          </div>
+          <div class="mb-4">
+            <label for="student-name" class="block text-gray-700 font-medium mb-2">姓名</label>
+            <input type="text" id="student-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入姓名" required>
+          </div>
+          <div class="mb-6">
+            <label for="student-major" class="block text-gray-700 font-medium mb-2">专业</label>
+            <input type="text" id="student-major" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入专业" required>
+          </div>
+          <div class="flex space-x-3">
+            <button type="button" id="cancel-modal-btn" class="flex-1 py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+              取消
+            </button>
+            <button type="submit" class="flex-1 py-2 px-4 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity">
+              确认
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 提示模态框 -->
+    <div id="alert-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md animate-fade-in text-center">
+        <div id="alert-icon" class="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mb-4 mx-auto">
+          <i class="fa fa-check text-3xl text-success"></i>
+        </div>
+        <h3 id="alert-title" class="text-xl font-bold text-gray-800 mb-2">操作成功</h3>
+        <p id="alert-message" class="text-gray-600 mb-6">你的操作已成功完成</p>
+        <button id="close-alert-btn" class="py-2 px-6 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity">
+          确定
+        </button>
+      </div>
+    </div>
+
+    <script>
+      // 配置
+      const API_BASE_URL = 'http://localhost:3000/api';
+      let currentPage = 1;
+      let isCalling = false;
+      let currentCalledStudent = null;
+      window.existingCharts = [];
+
+      // 工具函数
+      function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return unsafe.toString()
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      async function apiRequest(url, method = 'GET', data = null, isFormData = false) {
+        try {
+          const options = { method, credentials: 'omit' };
+          if (!isFormData) {
+            options.headers = { 'Content-Type': 'application/json' };
+            if (data) options.body = JSON.stringify(data);
+          } else {
+            options.body = data;
+          }
+
+          const response = await fetch(`${API_BASE_URL}${url}`, options);
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || '操作失败');
+          return result;
+        } catch (err) {
+          showAlert('操作失败', err.message || '网络错误', 'error');
+          return null;
+        }
+      }
+
+      function showAlert(title, message, type = 'success') {
+        const modal = document.getElementById('alert-modal');
+        document.getElementById('alert-title').textContent = title;
+        document.getElementById('alert-message').textContent = message;
+        const iconEl = document.getElementById('alert-icon');
+        
+        if (type === 'error') {
+          iconEl.className = 'w-16 h-16 bg-danger/10 rounded-full flex items-center justify-center mb-4 mx-auto';
+          iconEl.innerHTML = '<i class="fa fa-exclamation-circle text-3xl text-danger"></i>';
+        } else {
+          iconEl.className = 'w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mb-4 mx-auto';
+          iconEl.innerHTML = '<i class="fa fa-check text-3xl text-success"></i>';
+        }
+        
+        modal.classList.remove('hidden');
+      }
+
+      // 导航切换
+      function setupNavigation() {
+        const navBtns = document.querySelectorAll('.nav-btn, .mobile-nav-btn');
+        const sections = document.querySelectorAll('.section');
+        
+        navBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            navBtns.forEach(b => {
+              b.classList.remove('text-primary');
+              b.classList.add('text-gray-600');
+            });
+            btn.classList.remove('text-gray-600');
+            btn.classList.add('text-primary');
+            
+            sections.forEach(s => s.classList.add('hidden'));
+            if (btn.id.includes('home')) {
+              document.getElementById('home-section').classList.remove('hidden');
+            } else if (btn.id.includes('students')) {
+              document.getElementById('students-section').classList.remove('hidden');
+              loadStudents();
+            } else if (btn.id.includes('statistics')) {
+              document.getElementById('statistics-section').classList.remove('hidden');
+              loadStatistics();
+            } else if (btn.id.includes('settings')) {
+              document.getElementById('settings-section').classList.remove('hidden');
+              loadSettings();
+            }
+            
+            document.getElementById('mobile-menu').classList.add('hidden');
+          });
+        });
+        
+        document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+          document.getElementById('mobile-menu').classList.toggle('hidden');
+        });
+      }
+
+      // 首页点名功能
+      function setupCallingFunction() {
+        document.getElementById('call-student-btn').addEventListener('click', async () => {
+          if (isCalling) return;
+          isCalling = true;
+          
+          document.getElementById('not-called-state').classList.add('hidden');
+          document.getElementById('calling-animation-state').classList.remove('hidden');
+          document.getElementById('call-result-state').classList.add('hidden');
+          document.getElementById('random-event-alert').classList.add('hidden');
+          
+          try {
+            const callMode = document.querySelector('input[name="call-mode"]:checked').value;
+            const callResult = await apiRequest(`/call/start?mode=${callMode}`);
+            if (!callResult?.data) throw new Error('点名失败');
+            
+            currentCalledStudent = callResult.data;
+            
+            document.getElementById('calling-animation-state').classList.add('hidden');
+            document.getElementById('call-result-state').classList.remove('hidden');
+            document.getElementById('result-name').textContent = escapeHtml(currentCalledStudent.name);
+            document.getElementById('result-id').textContent = escapeHtml(currentCalledStudent.student_id);
+            document.getElementById('result-major').textContent = escapeHtml(currentCalledStudent.major);
+            document.getElementById('result-score').textContent = `当前积分：${parseFloat(currentCalledStudent.current_score).toFixed(2)}`;
+            
+            loadRecentCalls();
+          } catch (err) {
+            showAlert('点名失败', err.message, 'error');
+            resetCallingState();
+          } finally {
+            isCalling = false;
+          }
+        });
+
+        // 积分调整按钮事件
+        document.querySelectorAll('.score-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!currentCalledStudent) {
+              showAlert('操作失败', '请先点名', 'error');
+              return;
+            }
+            
+            const scoreChange = parseFloat(btn.dataset.score);
+            const action = btn.dataset.action;
+            
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `${originalText} <i class="fa fa-spinner fa-spin text-sm"></i>`;
+            
+            try {
+              const result = await apiRequest('/call/submit', 'POST', {
+                student_id: currentCalledStudent.student_id,
+                action,
+                score_change: scoreChange
+              });
+              
+              if (result) {
+                // 显示随机事件
+                if (result.randomEvent) {
+                  document.getElementById('random-event-alert').classList.remove('hidden');
+                  document.getElementById('event-description').textContent = result.eventMsg;
+                }
+                
+                showAlert('操作成功', `积分${scoreChange > 0 ? '+' : ''}${scoreChange}${result.randomEvent ? '(已翻倍)' : ''}`);
+                
+                setTimeout(() => {
+                  resetCallingState();
+                  document.getElementById('random-event-alert').classList.add('hidden');
+                }, 3000);
+                
+                loadRecentCalls();
+                if (document.getElementById('students-section').classList.contains('active')) {
+                  loadStudents();
+                }
+                if (document.getElementById('statistics-section').classList.contains('active')) {
+                  loadStatistics();
+                }
+              }
+            } catch (err) {
+              showAlert('操作失败', err.message, 'error');
+            } finally {
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+            }
+          });
+        });
+      }
+
+      function resetCallingState() {
+        document.getElementById('call-result-state').classList.add('hidden');
+        document.getElementById('not-called-state').classList.remove('hidden');
+        currentCalledStudent = null;
+      }
+
+      // 加载最近点名记录
+      async function loadRecentCalls() {
+        const recordsEl = document.getElementById('recent-calls');
+        recordsEl.innerHTML = '<div class="text-gray-500 text-center py-4">加载中...</div>';
+        
+        try {
+          const records = await apiRequest('/call/records');
+          if (!records || records.length === 0) {
+            recordsEl.innerHTML = '<div class="text-gray-500 text-center py-4">暂无点名记录</div>';
+            return;
+          }
+          
+          let html = '';
+          records.forEach(record => {
+            html += `
+              <div class="bg-gray-50 rounded-lg p-3 border border-gray-100 animate-fade-in">
+                <div class="flex justify-between items-start mb-1">
+                  <span class="font-medium text-gray-800">${escapeHtml(record.name)}</span>
+                  <span class="text-xs text-gray-500">${record.call_time}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">${escapeHtml(record.student_id)} | ${escapeHtml(record.major)}</span>
+                  <span class="text-sm font-medium ${parseFloat(record.score_change) > 0 ? 'text-success' : 'text-danger'}">
+                    ${parseFloat(record.score_change) > 0 ? '+' : ''}${record.score_change}
+                  </span>
+                </div>
+              </div>
+            `;
+          });
+          
+          recordsEl.innerHTML = html;
+        } catch (err) {
+          recordsEl.innerHTML = `<div class="text-red-500 text-center py-4">加载失败: ${err.message}</div>`;
+        }
+      }
+
+      // 学生管理
+      async function loadStudents() {
+        const listEl = document.getElementById('students-list');
+        listEl.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">加载中...</td></tr>';
+        
+        try {
+          const searchVal = document.getElementById('student-search').value.trim();
+          const majorVal = document.getElementById('major-filter').value;
+          const students = await apiRequest(`/students?search=${encodeURIComponent(searchVal)}&major=${encodeURIComponent(majorVal)}`);
+          
+          if (!students || students.length === 0) {
+            listEl.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">暂无学生数据</td></tr>';
+            return;
+          }
+          
+          let html = '';
+          students.forEach(student => {
+            html += `
+              <tr class="border-b border-gray-200 hover:bg-gray-50">
+                <td class="px-6 py-4">${escapeHtml(student.student_id)}</td>
+                <td class="px-6 py-4">${escapeHtml(student.name)}</td>
+                <td class="px-6 py-4">${escapeHtml(student.major)}</td>
+                <td class="px-6 py-4">${parseFloat(student.current_score).toFixed(2)}</td>
+                <td class="px-6 py-4">${student.total_calls || 0}</td>
+                <td class="px-6 py-4">
+                  <button class="text-primary hover:text-secondary mr-3" onclick="editStudent(${student.id})">
+                    <i class="fa fa-edit"></i> 编辑
+                  </button>
+                  <button class="text-danger hover:text-red-700" onclick="deleteStudent(${student.id})">
+                    <i class="fa fa-trash"></i> 删除
+                  </button>
+                </td>
+              </tr>
+            `;
+          });
+          
+          listEl.innerHTML = html;
+          loadMajorsForFilter(students);
+        } catch (err) {
+          listEl.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">加载失败: ${err.message}</td></tr>`;
+        }
+      }
+
+      function loadMajorsForFilter(students) {
+        const filterEl = document.getElementById('major-filter');
+        const majors = new Set(students.map(s => s.major).filter(Boolean));
+        const currentValue = filterEl.value;
+        
+        filterEl.innerHTML = '<option value="">所有专业</option>';
+        majors.forEach(major => {
+          const option = document.createElement('option');
+          option.value = major;
+          option.textContent = escapeHtml(major);
+          filterEl.appendChild(option);
+        });
+        
+        if (currentValue) filterEl.value = currentValue;
+      }
+
+      // 添加/编辑学生
+      document.getElementById('add-student-btn').addEventListener('click', () => {
+        document.getElementById('modal-title').textContent = '添加学生';
+        document.getElementById('student-form').reset();
+        document.getElementById('student-id').value = '';
+        document.getElementById('student-modal').classList.remove('hidden');
+      });
+
+      document.getElementById('student-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const studentId = document.getElementById('student-id').value;
+        const studentData = {
+          student_id: document.getElementById('student-id-input').value.trim(),
+          name: document.getElementById('student-name').value.trim(),
+          major: document.getElementById('student-major').value.trim()
+        };
+        
+        try {
+          if (studentId) {
+            await apiRequest(`/students/${studentId}`, 'PUT', studentData);
+            showAlert('操作成功', '学生信息更新成功');
+          } else {
+            await apiRequest('/students', 'POST', studentData);
+            showAlert('操作成功', '学生添加成功');
+          }
+          
+          document.getElementById('student-modal').classList.add('hidden');
+          if (document.getElementById('students-section').classList.contains('active')) {
+            loadStudents();
+          }
+        } catch (err) {
+          showAlert('操作失败', err.message, 'error');
+        }
+      });
+
+      window.editStudent = async function(id) {
+        try {
+          const students = await apiRequest('/students');
+          const student = students.find(s => s.id === id);
+          if (!student) {
+            showAlert('操作失败', '学生不存在', 'error');
+            return;
+          }
+          
+          document.getElementById('modal-title').textContent = '编辑学生';
+          document.getElementById('student-id').value = student.id;
+          document.getElementById('student-id-input').value = escapeHtml(student.student_id);
+          document.getElementById('student-name').value = escapeHtml(student.name);
+          document.getElementById('student-major').value = escapeHtml(student.major);
+          document.getElementById('student-modal').classList.remove('hidden');
+        } catch (err) {
+          showAlert('操作失败', '加载学生信息失败', 'error');
+        }
+      };
+
+      window.deleteStudent = async function(id) {
+        if (!confirm('确定要删除该学生吗？删除后相关记录也会被删除！')) return;
+        
+        try {
+          await apiRequest(`/students/${id}`, 'DELETE');
+          showAlert('操作成功', '学生删除成功');
+          if (document.getElementById('students-section').classList.contains('active')) {
+            loadStudents();
+          }
+        } catch (err) {
+          showAlert('操作失败', err.message, 'error');
+        }
+      };
+
+      // Excel导入/导出
+      document.getElementById('import-students-btn').addEventListener('click', () => {
+        document.getElementById('excel-file-input').click();
+      });
+
+      document.getElementById('excel-file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        showAlert('导入中', '正在处理Excel文件，请稍候...');
+        
+        try {
+          const result = await apiRequest('/students/import', 'POST', formData, true);
+          if (result) {
+            document.getElementById('alert-modal').classList.add('hidden');
+            showAlert('导入成功', result.message);
+            if (result.stats.fail > 0) {
+              setTimeout(() => {
+                alert(`失败详情:\n${result.stats.failReasons.join('\n')}`);
+              }, 1000);
+            }
+            loadStudents();
+          }
+        } catch (err) {
+          document.getElementById('alert-modal').classList.add('hidden');
+          showAlert('导入失败', err.message, 'error');
+        } finally {
+          document.getElementById('excel-file-input').value = '';
+        }
+      });
+
+      document.getElementById('export-students-btn').addEventListener('click', async () => {
+        showAlert('导出中', '正在生成Excel文件，请稍候...');
+        
+        try {
+          const response = await fetch(`${API_BASE_URL}/students/export`, {
+            method: 'GET',
+            credentials: 'omit'
+          });
+          
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({ error: '导出失败' }));
+            throw new Error(error.error || '导出失败');
+          }
+          
+          const blob = await response.blob();
+          const fileName = '学生列表.xlsx';
+          saveAs(blob, fileName);
+          
+          document.getElementById('alert-modal').classList.add('hidden');
+          showAlert('导出成功', 'Excel文件已成功导出');
+        } catch (err) {
+          document.getElementById('alert-modal').classList.add('hidden');
+          showAlert('导出失败', err.message, 'error');
+        }
+      });
+
+      // 下载Excel模板
+      document.getElementById('download-template').addEventListener('click', async (e) => {
+        e.preventDefault();
+        
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('学生模板');
+        
+        worksheet.columns = [
+          { header: '学号', key: 'student_id', width: 15 },
+          { header: '姓名', key: 'name', width: 10 },
+          { header: '专业', key: 'major', width: 20 }
+        ];
+        
+        // 添加示例数据
+        worksheet.addRow({ student_id: '2023001', name: '张三', major: '计算机科学与技术' });
+        worksheet.addRow({ student_id: '2023002', name: '李四', major: '软件工程' });
+        worksheet.addRow({ student_id: '2023003', name: '王五', major: '网络工程' });
+
+        // 格式化表头
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'E6E6FA' }
+        };
+
+        // 导出模板文件
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, '学生导入模板.xlsx');
+      });
+
+      // 搜索和筛选事件
+      document.getElementById('student-search').addEventListener('input', debounce(() => {
+        currentPage = 1;
+        loadStudents();
+      }, 500));
+
+      document.getElementById('major-filter').addEventListener('change', () => {
+        currentPage = 1;
+        loadStudents();
+      });
+
+      // 统计功能
+      async function loadStatistics() {
+        try {
+          const stats = await apiRequest('/stats/total');
+          if (stats) {
+            document.getElementById('total-students').textContent = stats.studentCount || 0;
+            document.getElementById('total-calls').textContent = stats.callCount || 0;
+            document.getElementById('avg-score').textContent = stats.avgScore || '0.00';
+            document.getElementById('total-majors').textContent = stats.majorCount || 0;
+          }
+
+          // 渲染图表
+          await renderCharts();
+        } catch (err) {
+          console.error('加载统计失败:', err);
+        }
+      }
+
+      async function renderCharts() {
+        // 销毁已有图表
+        window.existingCharts.forEach(chart => chart.destroy());
+        window.existingCharts = [];
+
+        try {
+          // 积分排名图表
+          const rankData = await apiRequest('/stats/score-rank');
+          const rankChartEl = document.getElementById('score-ranking-chart');
+          
+          if (rankData && rankData.length > 0) {
+            const ctx1 = rankChartEl.getContext('2d');
+            const chart1 = new Chart(ctx1, {
+              type: 'bar',
+              data: {
+                labels: rankData.map(item => escapeHtml(item.name)),
+                datasets: [{
+                  label: '积分',
+                  data: rankData.map(item => parseFloat(item.current_score)),
+                  backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: { beginAtZero: true }
+                }
+              }
+            });
+            window.existingCharts.push(chart1);
+          }
+
+          // 专业分布图表
+          const distData = await apiRequest('/stats/major-dist');
+          const distChartEl = document.getElementById('major-distribution-chart');
+          
+          if (distData && distData.length > 0) {
+            const ctx2 = distChartEl.getContext('2d');
+            const chart2 = new Chart(ctx2, {
+              type: 'pie',
+              data: {
+                labels: distData.map(item => escapeHtml(item.major)),
+                datasets: [{
+                  label: '学生数量',
+                  data: distData.map(item => item.count),
+                  backgroundColor: [
+                    'rgba(59, 130, 246, 0.7)',
+                    'rgba(16, 185, 129, 0.7)',
+                    'rgba(245, 158, 11, 0.7)',
+                    'rgba(239, 68, 68, 0.7)',
+                    'rgba(139, 92, 246, 0.7)'
+                  ],
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
+              }
+            });
+            window.existingCharts.push(chart2);
+          }
+        } catch (err) {
+          console.error('渲染图表失败:', err);
+        }
+      }
+
+      // 系统设置
+      async function loadSettings() {
+        try {
+          const settings = await apiRequest('/settings');
+          if (settings && settings.score_rules) {
+            document.getElementById('score-arrive').value = settings.score_rules.arrive || 1;
+            document.getElementById('score-absent').value = settings.score_rules.absent || -1;
+            document.getElementById('score-repeat-correct').value = settings.score_rules['repeat-correct'] || 0.5;
+            document.getElementById('score-repeat-wrong').value = settings.score_rules['repeat-wrong'] || -1;
+            document.getElementById('score-answer-excellent').value = settings.score_rules['answer-excellent'] || 3;
+            document.getElementById('score-answer-good').value = settings.score_rules['answer-good'] || 2;
+            document.getElementById('score-answer-average').value = settings.score_rules['answer-average'] || 1;
+            document.getElementById('score-answer-poor').value = settings.score_rules['answer-poor'] || 0.5;
+            
+            // 设置随机事件概率
+            const probability = parseFloat(settings.random_event_probability || 0.2);
+            document.getElementById('random-event-probability').value = probability;
+            document.getElementById('probability-value').textContent = probability;
+          }
+        } catch (err) {
+          showAlert('加载失败', '加载系统设置失败', 'error');
+        }
+      }
+
+      // 随机事件概率滑块事件
+      document.getElementById('random-event-probability').addEventListener('input', (e) => {
+        document.getElementById('probability-value').textContent = e.target.value;
+      });
+
+      document.getElementById('save-settings-btn').addEventListener('click', async () => {
+        const scoreRules = {
+          arrive: parseFloat(document.getElementById('score-arrive').value) || 0,
+          absent: parseFloat(document.getElementById('score-absent').value) || 0,
+          'repeat-correct': parseFloat(document.getElementById('score-repeat-correct').value) || 0,
+          'repeat-wrong': parseFloat(document.getElementById('score-repeat-wrong').value) || 0,
+          'answer-excellent': parseFloat(document.getElementById('score-answer-excellent').value) || 0,
+          'answer-good': parseFloat(document.getElementById('score-answer-good').value) || 0,
+          'answer-average': parseFloat(document.getElementById('score-answer-average').value) || 0,
+          'answer-poor': parseFloat(document.getElementById('score-answer-poor').value) || 0
+        };
+
+        const randomEventProbability = parseFloat(document.getElementById('random-event-probability').value) || 0.2;
+
+        try {
+          await apiRequest('/settings', 'PUT', {
+            score_rules: scoreRules,
+            random_event_probability: randomEventProbability
+          });
+          showAlert('保存成功', '系统设置已保存');
+        } catch (err) {
+          showAlert('保存失败', err.message, 'error');
+        }
+      });
+
+      // 模态框关闭事件
+      document.getElementById('close-modal-btn').addEventListener('click', () => {
+        document.getElementById('student-modal').classList.add('hidden');
+      });
+
+      document.getElementById('cancel-modal-btn').addEventListener('click', () => {
+        document.getElementById('student-modal').classList.add('hidden');
+      });
+
+      document.getElementById('close-alert-btn').addEventListener('click', () => {
+        document.getElementById('alert-modal').classList.add('hidden');
+      });
+
+      // 点击模态框外部关闭
+      document.getElementById('student-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('student-modal')) {
+          document.getElementById('student-modal').classList.add('hidden');
+        }
+      });
+
+      document.getElementById('alert-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('alert-modal')) {
+          document.getElementById('alert-modal').classList.add('hidden');
+        }
+      });
+
+      // 防抖函数
+      function debounce(func, wait) {
+        let timeout;
+        return function() {
+          const context = this;
+          const args = arguments;
+          clearTimeout(timeout);
+          timeout = setTimeout(() => func.apply(context, args), wait);
+        };
+      }
+
+      // 初始化
+      window.onload = function() {
+        setupNavigation();
+        setupCallingFunction();
+        loadRecentCalls();
+        if (document.getElementById('students-section').classList.contains('active')) {
+          loadStudents();
+        }
+        if (document.getElementById('statistics-section').classList.contains('active')) {
+          loadStatistics();
+        }
+        if (document.getElementById('settings-section').classList.contains('active')) {
+          loadSettings();
+        }
+      };
+    </script>
+  </body>
+</html>
